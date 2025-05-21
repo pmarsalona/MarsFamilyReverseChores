@@ -1,0 +1,314 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Kids Chore Tracker (React)</title>
+  <!-- Tailwind for quick styling -->
+  <script src="https://cdn.tailwindcss.com"></script>
+  <!-- React 18 UMD builds -->
+  <script crossorigin src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
+  <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
+</head>
+<body class="bg-gray-100 min-h-screen flex flex-col items-center p-4">
+  <h1 class="text-2xl font-bold mb-6">Weekly Chore Tracker</h1>
+  <div id="root" class="w-full"></div>
+
+  <script type="text/javascript">
+    /* ===== Helpers ===== */
+    const money = (c) => `$${(c / 100).toFixed(2)}`;
+    const START_ALLOWANCE = 100; // cents ($1)
+    const STORAGE_KEY = 'chore_tracker_v4';
+    const DEFAULT_KIDS = [
+      { name: 'Penelope', allowance: START_ALLOWANCE, chores: [], icon: '👧' },
+      { name: 'Amelia', allowance: START_ALLOWANCE, chores: [], icon: '🦸' },
+      { name: 'Lena', allowance: START_ALLOWANCE, chores: [], icon: '🧙' },
+    ];
+
+    /* ===== React App ===== */
+    const { useState, useEffect } = React;
+
+    function App() {
+      const [kids, setKids] = useState(() => {
+        try {
+          const saved = localStorage.getItem(STORAGE_KEY);
+          return saved ? JSON.parse(saved) : DEFAULT_KIDS;
+        } catch (err) {
+          console.error('Load error', err);
+          return DEFAULT_KIDS;
+        }
+      });
+      const [editingKidIdx, setEditingKidIdx] = useState(null);
+      const [editingName, setEditingName] = useState('');
+      const [editingIcon, setEditingIcon] = useState('');
+      const [editingChore, setEditingChore] = useState({ kidIdx: null, choreIdx: null });
+      const [choreEdit, setChoreEdit] = useState({ name: '', deduction: '' });
+
+      // Persist to localStorage on every change
+      useEffect(() => {
+        localStorage.setItem(STORAGE_KEY, JSON.stringify(kids));
+      }, [kids]);
+
+      /* ----- Handlers ----- */
+      const addChore = (kidIdx, name, deductionDollars) => {
+        const deduction = Math.round(deductionDollars * 100);
+        if (!name || deduction <= 0) return;
+        setKids((prev) => {
+          const next = structuredClone(prev);
+          next[kidIdx].chores.push({ name, deduction, misses: 0 });
+          return next;
+        });
+      };
+
+      const recordMiss = (kidIdx, choreIdx) => {
+        setKids((prev) => {
+          const next = structuredClone(prev);
+          const kid = next[kidIdx];
+          const chore = kid.chores[choreIdx];
+          kid.allowance = Math.max(0, kid.allowance - chore.deduction);
+          chore.misses = (chore.misses || 0) + 1;
+          return next;
+        });
+      };
+
+      const reverseMiss = (kidIdx, choreIdx) => {
+        setKids((prev) => {
+          const next = structuredClone(prev);
+          const kid = next[kidIdx];
+          const chore = kid.chores[choreIdx];
+          if ((chore.misses || 0) > 0) {
+            kid.allowance = kid.allowance + chore.deduction;
+            chore.misses -= 1;
+          }
+          return next;
+        });
+      };
+
+      const startEditKid = (kidIdx) => {
+        setEditingKidIdx(kidIdx);
+        setEditingName(kids[kidIdx].name);
+        setEditingIcon(kids[kidIdx].icon || '😀');
+      };
+      const saveEditKid = (kidIdx) => {
+        if (!editingName.trim()) return;
+        setKids((prev) => {
+          const next = structuredClone(prev);
+          next[kidIdx].name = editingName.trim();
+          next[kidIdx].icon = editingIcon || '😀';
+          return next;
+        });
+        setEditingKidIdx(null);
+        setEditingName('');
+        setEditingIcon('');
+      };
+      const cancelEditKid = () => {
+        setEditingKidIdx(null);
+        setEditingName('');
+        setEditingIcon('');
+      };
+
+      const resetWeek = () => {
+        if (!confirm('Start a new week?')) return;
+        setKids((prev) => prev.map((k) => ({ ...k, allowance: START_ALLOWANCE })));
+      };
+
+      const startEditChore = (kidIdx, choreIdx) => {
+        const chore = kids[kidIdx].chores[choreIdx];
+        setEditingChore({ kidIdx, choreIdx });
+        setChoreEdit({ name: chore.name, deduction: (chore.deduction / 100).toFixed(2) });
+      };
+      const saveEditChore = (kidIdx, choreIdx) => {
+        const name = choreEdit.name.trim();
+        const deduction = Math.round(parseFloat(choreEdit.deduction) * 100);
+        if (!name || isNaN(deduction) || deduction <= 0) return;
+        setKids((prev) => {
+          const next = structuredClone(prev);
+          next[kidIdx].chores[choreIdx].name = name;
+          next[kidIdx].chores[choreIdx].deduction = deduction;
+          setEditingChore({ kidIdx: null, choreIdx: null });
+          setChoreEdit({ name: '', deduction: '' });
+          return next;
+        });
+      };
+      const cancelEditChore = () => {
+        setEditingChore({ kidIdx: null, choreIdx: null });
+        setChoreEdit({ name: '', deduction: '' });
+      };
+      const deleteChore = (kidIdx, choreIdx) => {
+        if (!confirm('Delete this chore?')) return;
+        setKids((prev) => {
+          const next = structuredClone(prev);
+          next[kidIdx].chores.splice(choreIdx, 1);
+          return next;
+        });
+      };
+
+      /* ----- Render ----- */
+      return (
+        React.createElement('div', { className: 'space-y-6' },
+          kids.map((kid, kidIdx) => (
+            React.createElement('div', { key: kidIdx, className: 'bg-gradient-to-br from-blue-100 to-purple-100 rounded-2xl shadow-xl p-6 transition-transform hover:scale-105 duration-200 border-2 border-blue-200' },
+              /* Header */
+              React.createElement('div', { className: 'flex items-center mb-4' },
+                React.createElement('div', { className: 'w-14 h-14 rounded-full bg-gradient-to-br from-blue-400 to-purple-400 flex items-center justify-center text-2xl font-extrabold text-white shadow-lg mr-4 border-4 border-white' },
+                  React.createElement('span', null, kid.icon || '😀')
+                ),
+                editingKidIdx === kidIdx
+                  ? React.createElement('form', {
+                      onSubmit: (e) => { e.preventDefault(); saveEditKid(kidIdx); },
+                      className: 'flex items-center gap-2 flex-1'
+                    },
+                      React.createElement('input', {
+                        className: 'border-b-2 border-blue-400 bg-transparent text-lg font-medium px-1 focus:outline-none',
+                        value: editingName,
+                        onChange: (e) => setEditingName(e.target.value),
+                        autoFocus: true
+                      }),
+                      React.createElement('input', {
+                        className: 'w-12 border-b-2 border-blue-400 bg-transparent text-xl px-1 text-center',
+                        value: editingIcon,
+                        onChange: (e) => setEditingIcon(e.target.value),
+                        maxLength: 2,
+                        placeholder: '😀',
+                        title: 'Profile emoji'
+                      }),
+                      React.createElement('button', {
+                        type: 'submit',
+                        className: 'text-green-600 font-bold hover:underline',
+                        title: 'Save'
+                      }, '✔'),
+                      React.createElement('button', {
+                        type: 'button',
+                        className: 'text-gray-400 font-bold hover:underline',
+                        onClick: cancelEditKid,
+                        title: 'Cancel'
+                      }, '✖')
+                    )
+                  : React.createElement(React.Fragment, null,
+                      React.createElement('h2', { className: 'text-lg font-bold text-blue-900 flex-1' }, kid.name),
+                      React.createElement('button', {
+                        className: 'ml-2 text-blue-400 hover:text-blue-700 transition-colors',
+                        onClick: () => startEditKid(kidIdx),
+                        title: 'Edit name'
+                      }, '✏️')
+                    ),
+                React.createElement('span', { className: 'ml-auto text-green-600 font-extrabold text-xl flex items-center gap-1' },
+                  React.createElement('span', null, '💰'),
+                  money(kid.allowance)
+                )
+              ),
+              /* Chore list */
+              React.createElement('div', { className: 'space-y-2' },
+                kid.chores.length === 0 && React.createElement('p', { className: 'text-sm text-gray-500 italic' }, 'No chores yet'),
+                kid.chores.map((chore, choreIdx) => (
+                  editingChore.kidIdx === kidIdx && editingChore.choreIdx === choreIdx
+                    ? React.createElement('div', { key: choreIdx, className: 'flex items-center bg-yellow-50 p-2 rounded-lg shadow-sm border border-yellow-200 gap-2 animate-pulse' },
+                        React.createElement('input', {
+                          className: 'flex-1 border-b-2 border-yellow-400 bg-transparent px-1 text-gray-800',
+                          value: choreEdit.name,
+                          onChange: (e) => setChoreEdit((ce) => ({ ...ce, name: e.target.value })),
+                          autoFocus: true
+                        }),
+                        React.createElement('input', {
+                          className: 'w-20 border-b-2 border-yellow-400 bg-transparent px-1 text-gray-800',
+                          type: 'number',
+                          step: '0.01',
+                          min: '0.01',
+                          value: choreEdit.deduction,
+                          onChange: (e) => setChoreEdit((ce) => ({ ...ce, deduction: e.target.value }))
+                        }),
+                        React.createElement('button', {
+                          className: 'text-green-600 font-bold hover:underline',
+                          onClick: () => saveEditChore(kidIdx, choreIdx),
+                          title: 'Save'
+                        }, '✔'),
+                        React.createElement('button', {
+                          className: 'text-gray-400 font-bold hover:underline',
+                          onClick: cancelEditChore,
+                          title: 'Cancel'
+                        }, '✖')
+                      )
+                    : React.createElement('div', { key: choreIdx, className: 'flex items-center bg-white/80 p-2 rounded-lg shadow-sm border border-blue-100 gap-2' },
+                        React.createElement('span', { className: 'flex-1 font-medium text-gray-700' }, `${chore.name} (−${money(chore.deduction)})`),
+                        React.createElement('span', { className: 'text-xs text-purple-600 font-bold px-2' }, `Misses: ${chore.misses || 0}`),
+                        React.createElement('button', {
+                          className: 'bg-green-400 text-white px-2 py-1 rounded-lg hover:bg-green-500 transition-colors',
+                          onClick: () => reverseMiss(kidIdx, choreIdx),
+                          title: 'Undo miss'
+                        }, '−'),
+                        React.createElement('button', {
+                          className: 'bg-yellow-500 text-white px-2 py-1 rounded-lg hover:bg-yellow-600 transition-colors',
+                          onClick: () => recordMiss(kidIdx, choreIdx),
+                          title: 'Missed chore'
+                        }, '+'),
+                        React.createElement('button', {
+                          className: 'ml-1 text-blue-400 hover:text-blue-700 transition-colors',
+                          onClick: () => startEditChore(kidIdx, choreIdx),
+                          title: 'Edit chore'
+                        }, '✏️'),
+                        React.createElement('button', {
+                          className: 'ml-1 text-red-400 hover:text-red-700 transition-colors',
+                          onClick: () => deleteChore(kidIdx, choreIdx),
+                          title: 'Delete chore'
+                        }, '🗑️')
+                      )
+                ))
+              ),
+              /* Add chore form */
+              React.createElement(AddChoreForm, { onAdd: (name, ded) => addChore(kidIdx, name, ded) })
+            )
+          )),
+          /* Reset button */
+          React.createElement('button', {
+            className: 'absolute top-4 right-4 bg-gradient-to-br from-red-400 to-pink-500 text-white px-3 py-1 rounded-full shadow-md hover:scale-105 hover:bg-red-600 transition-all text-sm font-bold border-2 border-white z-50',
+            onClick: resetWeek,
+            style: { minWidth: 'auto' }
+          }, '🔄 Reset')
+        )
+      );
+    }
+
+    /* ----- AddChoreForm Component ----- */
+    function AddChoreForm({ onAdd }) {
+      const [name, setName] = useState('');
+      const [deduct, setDeduct] = useState('');
+
+      const submit = (e) => {
+        e.preventDefault();
+        const dedValue = parseFloat(deduct);
+        if (!name.trim() || isNaN(dedValue) || dedValue <= 0) return;
+        onAdd(name.trim(), dedValue);
+        setName('');
+        setDeduct('');
+      };
+
+      return (
+        React.createElement('form', { onSubmit: submit, className: 'mt-3 flex gap-2 flex-wrap' },
+          React.createElement('input', {
+            className: 'flex-1 border rounded-lg p-2',
+            placeholder: 'New chore',
+            value: name,
+            onChange: (e) => setName(e.target.value),
+            required: true
+          }),
+          React.createElement('input', {
+            className: 'w-24 border rounded-lg p-2',
+            type: 'number',
+            step: '0.01',
+            min: '0.01',
+            placeholder: '$',
+            value: deduct,
+            onChange: (e) => setDeduct(e.target.value),
+            required: true
+          }),
+          React.createElement('button', { className: 'bg-blue-600 text-white px-4 rounded-lg hover:bg-blue-700' }, 'Add')
+        )
+      );
+    }
+
+    /* ----- Mount App ----- */
+    const root = ReactDOM.createRoot(document.getElementById('root'));
+    root.render(React.createElement(App));
+  </script>
+</body>
+</html>
